@@ -4,7 +4,7 @@ RESTful asset store web API
 ## Setup
 #### 1. clone this repo
 ```bash
-git clone git@github.com:strixcuriosus/asset_store.git
+git clone https://github.com/strixcuriosus/asset_store.git
 cd asset_store
 ```
 #### 2. There are at least two options for building and running the app: with Docker and in a local virtualenv.
