@@ -1,4 +1,5 @@
 """RESTful Asset Store API Resources (RASAR)."""
+import json
 import six
 
 from flask import request
@@ -24,15 +25,15 @@ ASSET_RESOURCE_FIELDS = api.model('Asset', ASSET_FIELDS_TO_SERIALIZE)
 ASSET_DETAILS_RESOURCE_FIELDS = api.model('AssetDetails', ASSET_DETAILS_FIELDS_TO_SERIALIZE)
 
 
-@api.route('/assets/<asset_name>')
 @api.doc(params={'asset_name': 'unique name of the asset'})
+@api.route('/assets/<asset_name>')
 class AssetResource(Resource):
     """A single asset resource."""
 
+    @api.marshal_with(ASSET_RESOURCE_FIELDS)
     @api.response(200, 'Success')
     @api.response(400, 'ValidationError')
     @api.response(404, 'Asset Not Found')
-    @api.marshal_with(ASSET_RESOURCE_FIELDS)
     def get(self, asset_name=None):
         """Get a single Asset."""
         if not isinstance(asset_name, six.string_types):
@@ -47,7 +48,7 @@ class AssetResource(Resource):
 @api.response(200, 'Success')
 @api.route('/assets/<asset_name>/details')
 class AssetDetailsResource(Resource):
-    """Update details for a single Asset."""
+    """Details resource for a single Asset."""
 
     def _get_asset(self, asset_name):
         """Get an asset by name."""
@@ -60,9 +61,9 @@ class AssetDetailsResource(Resource):
         return asset
 
     def get(self, asset_name=None):
-        """Update details for a single Asset."""
+        """Get details for a single Asset."""
         asset = self._get_asset(asset_name)
-        return asset.asset_details
+        return asset.asset_details, 200
 
     @api.expect(ASSET_DETAILS_RESOURCE_FIELDS)
     def put(self, asset_name):
@@ -72,37 +73,38 @@ class AssetDetailsResource(Resource):
         Does not merge new details with old details (i.e. not doing an upsert)
         """
         try:
-            dict(request.data)
-        except TypeError:
-            abort(400, message='asset_details must be a dict')
+            asset_details = remove_nulls(asset_details_parser.parse_args(strict=True))
+        except ValueError:
+            abort(400, message='asset_details must be a json object.')
 
-        asset_details = remove_nulls(asset_details_parser.parse_args())
         asset = self._get_asset(asset_name)
 
         try:
             asset.update_details(asset_details)
         except ValidationError as err:
             abort(400, message='{}'.format(err))
-        return asset.asset_details
+        return asset.asset_details, 201
 
 
 @api.route('/assets')
 class AssetListResource(Resource):
     """A collection resource of asset resources."""
 
-    @api.response(200, 'Success')
+    @api.doc(params={'asset_class': 'optional filter for asset_class',
+                     'asset_type': 'optional filter for asset_type'})
     @api.marshal_with(ASSET_RESOURCE_FIELDS, as_list=True)
+    @api.response(200, 'Success')
     def get(self):
         """Get a list of assets."""
         filters = remove_nulls(asset_filters_parser.parse_args())
         assets = db.session.query(Asset).filter_by(**filters).all()
         return assets, 200
 
+    @api.expect(ASSET_RESOURCE_FIELDS)
     @api.header('X-User', 'just a username for now', required=True)
     @api.response(201, 'Asset Created')
     @api.response(400, 'ValidationError')
     @api.response(403, 'Not Authorized')
-    @api.expect(ASSET_RESOURCE_FIELDS)
     def post(self):
         """Create a new asset."""
         # check if user is authorized
@@ -110,7 +112,11 @@ class AssetListResource(Resource):
         user = request.headers.get('X-User')
         if not has_admin_access(user):
             abort(403, 'Not authorized to create assets.')
-        asset_dict = dict(asset_parser.parse_args())
+        try:
+            asset_dict = dict(asset_parser.parse_args(strict=True))
+        except ValueError:
+            abort(400, message='Asset data must be a json object')
+
         # fill in default (empty dict) details if not provided
         asset_dict['asset_details'] = asset_dict['asset_details'] or {}
         try:

@@ -54,6 +54,7 @@ class Asset(db.Model):
     asset_name = Column(String(64), nullable=False, unique=True)
     asset_type = Column(ChoiceType(ASSET_TYPES), nullable=False)
     asset_class = Column(ChoiceType(ASSET_CLASSES), nullable=False)
+    # store details as a string for now -- consider using a JSON column (requires a sqlite extension)
     asset_details_json = Column(String)
 
     @property
@@ -219,11 +220,7 @@ class Asset(db.Model):
 
     @classmethod
     def _check_for_unknown_asset_details_keys(cls, asset_details, asset_class):
-        """Make sure that the asset_details follow business roles for the provided asset_class.
-
-        - asset_class dish can have diameter and radome details
-        - asset_class yagi can have gain details
-        """
+        """Make sure details keys are supported."""
         allowed_keys = []
         if asset_class == cls.DISH:
             allowed_keys = cls.DISH_DETAILS
@@ -245,6 +242,11 @@ class Asset(db.Model):
 
     @classmethod
     def _validate_asset_details_for_asset_class(cls, asset_details, asset_class):
+        """Make sure that the asset_details follow business roles for the provided asset_class.
+
+        - asset_class dish can have diameter and radome details
+        - asset_class yagi can have gain details
+        """
         cls._check_for_unknown_asset_details_keys(asset_details, asset_class)
         for key, value in asset_details.items():
             if key == cls.DIAMETER:

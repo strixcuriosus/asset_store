@@ -117,10 +117,11 @@ class AssetsAPITestCase(AppTestCase):
 
         new_details = classes_to_details[asset_dict['asset_class']]
         response = self.app.put(path, data=new_details)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 201)
         self.assertEqual(json.loads(response.get_data()), new_details)
 
-    @ddt.data({'diameter': 'hello', 'radome': '1.23', 'cat': 'meow'}, {'gain': 'hello'}, 'what')
+    # TODO: handle mal-formed non-dict data edge cases (e.g. 'hello', 1.23)
+    @ddt.data({'diameter': 'hello', 'radome': '1.23', 'cat': 'meow'}, {'gain': 'hello'})
     def test_update_asset_details_by_asset_name__invalid_details(self, invalid_details):
         """The asset_details endpoint should not allow invalid update of asset_details."""
         asset_dict = VALID_ASSET_DICTS[0]
