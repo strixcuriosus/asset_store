@@ -1,7 +1,9 @@
 """Miscellaneous utilities for the asset_store app."""
 import six
+from flask_restplus import fields
 
 
+# custom exeptions
 class ValidationError(Exception):
     """Custom exception class for model validations."""
 
@@ -14,6 +16,7 @@ class ResourceConflictError(Exception):
     pass
 
 
+# choice field utils
 def get_choice_list(list_of_choice_tuples):
     """Map a list of choice_tuples to a list of choice strings.
 
@@ -53,3 +56,21 @@ def validate_choice(choice_name, choice_value, valid_choice_tuples, custom_error
             msg = '{} is not a valid choice for {}. Valid choices are: {}'.format(
                 choice_value, choice_name, choice_list)
         raise ValidationError(msg)
+
+
+def remove_nulls(input_dict):
+    """Remove keys with no value from a dictionary."""
+    output = {}
+    for k, v in input_dict.items():
+        if v is not None:
+            output[k] = v
+    return output
+
+
+# custom partial flask-restful field
+class PartialDictField(fields.Raw):
+    """A dict field that hides null values."""
+
+    def format(self, value):
+        """Convert dict value to masked dict."""
+        return remove_nulls(value)

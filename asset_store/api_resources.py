@@ -1,31 +1,26 @@
 """RESTful Asset Store API Resources (RASAR)."""
 import six
 
-from flask_restplus import abort, Api, fields, reqparse, Resource
+from flask import request
+from flask_restplus import abort, Api, Resource
 from sqlalchemy.orm.exc import NoResultFound
 
+from asset_store.api_serializers import (asset_parser,
+                                         asset_details_parser,
+                                         ASSET_FIELDS_TO_SERIALIZE,
+                                         ASSET_DETAILS_FIELDS_TO_SERIALIZE)
+
 from asset_store.models import Asset, db
-from asset_store.utils import ResourceConflictError, ValidationError
+from asset_store.utils import remove_nulls, ResourceConflictError, ValidationError
 
 # the api is implemented with flask-restplus, which comes with some swaggerific tools for easy auto-documentations
-api = Api(version='0.1', title='Asset Store API.',
+api = Api(version='0.2.0', title='Asset Store API.',
           description='A RESTful web API for satellite and antenna assets.')
-
-# a parser for asset create args
-asset_parser = reqparse.RequestParser()
-asset_parser.add_argument('asset_name', required=True)
-asset_parser.add_argument('asset_type', required=True)
-asset_parser.add_argument('asset_class', required=True)
-
-
-# asset fields to expose in the api
-ASSET_FIELDS_TO_SERIALIZE = {'asset_name': fields.String(default='HelloWorld'),
-                             'asset_type': fields.String(attribute=lambda x: x.asset_type.value, default='satellite'),
-                             'asset_class': fields.String(attribute=lambda x: x.asset_class.value, default='dove')}
 
 
 # an api model can be used to marshal (aka serialize) the data model into json
 ASSET_RESOURCE_FIELDS = api.model('Asset', ASSET_FIELDS_TO_SERIALIZE)
+ASSET_DETAILS_RESOURCE_FIELDS = api.model('AssetDetails', ASSET_DETAILS_FIELDS_TO_SERIALIZE)
 
 
 @api.route('/assets/<asset_name>')
@@ -48,8 +43,49 @@ class AssetResource(Resource):
             abort(404, message='asset with name {} not found.'.format(asset_name))
 
 
+@api.response(200, 'Success')
+@api.route('/assets/<asset_name>/details')
+class AssetDetailsResource(Resource):
+    """Update details for a single Asset."""
+
+    def _get_asset(self, asset_name):
+        """Get an asset by name."""
+        if not isinstance(asset_name, six.string_types):
+            abort(400, message='asset_name must be a string.')
+        try:
+            asset = db.session.query(Asset).filter(Asset.asset_name == asset_name).one()
+        except NoResultFound:
+            abort(404, message='asset with name {} not found.'.format(asset_name))
+        return asset
+
+    def get(self, asset_name=None):
+        """Update details for a single Asset."""
+        asset = self._get_asset(asset_name)
+        return asset.asset_details
+
+    @api.expect(ASSET_DETAILS_RESOURCE_FIELDS)
+    def put(self, asset_name):
+        """Update details for a single Asset.
+
+        Replaces all details with the new provided details.
+        Does not merge new details with old details (i.e. not doing an upsert)
+        """
+        try:
+            dict(request.data)
+        except TypeError:
+            abort(400, message='asset_details must be a dict')
+
+        asset_details = remove_nulls(asset_details_parser.parse_args())
+        asset = self._get_asset(asset_name)
+
+        try:
+            asset.update_details(asset_details)
+        except ValidationError as err:
+            abort(400, message='{}'.format(err))
+        return asset.asset_details
+
+
 @api.route('/assets')
-@api.response(400, 'ValidationError')
 class AssetListResource(Resource):
     """A collection resource of asset resources."""
 
@@ -61,10 +97,13 @@ class AssetListResource(Resource):
         return assets, 200
 
     @api.response(201, 'Asset Created')
+    @api.response(400, 'ValidationError')
     @api.expect(ASSET_RESOURCE_FIELDS)
     def post(self):
         """Create a new asset."""
-        asset_dict = asset_parser.parse_args()
+        asset_dict = dict(asset_parser.parse_args())
+        # fill in default (empty dict) details if not provided
+        asset_dict['asset_details'] = asset_dict['asset_details'] or {}
         try:
             Asset.create_asset(**asset_dict)
             return asset_dict, 201

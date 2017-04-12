@@ -1,10 +1,11 @@
 """Database backed models for the asset store."""
 
+import json
 import re
 import six
 
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, JSON, String
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy_utils import ChoiceType
 
@@ -16,6 +17,7 @@ db = SQLAlchemy()
 class Asset(db.Model):
     """A model for tracking satellite and antenna assets."""
 
+    # TODO: consider using enums
     # types
     ANTENNA = 'antenna'
     SATELLITE = 'satellite'
@@ -24,23 +26,55 @@ class Asset(db.Model):
                    (ANTENNA, 'antenna')]
 
     # type specific classes
-    ANTENNA_CLASSES = [('dish', 'dish'),
-                       ('yagi', 'yagi')]
+    DISH = 'dish'
+    YAGI = 'yagi'
 
-    SATELLITE_CLASSES = [('dove', 'dove'),
-                         ('rapideye', 'rapideye')]
+    ANTENNA_CLASSES = [(DISH, 'dish'),
+                       (YAGI, 'yagi')]
+
+    DOVE = 'dove'
+    RAPIDEYE = 'rapideye'
+    SATELLITE_CLASSES = [(DOVE, 'dove'),
+                         (RAPIDEYE, 'rapideye')]
 
     # all classes
     ASSET_CLASSES = ANTENNA_CLASSES + SATELLITE_CLASSES
+
+    # supported keys in the asset_details json blob for dish assets
+    DIAMETER = 'diameter'
+    RADOME = 'radome'
+    DISH_DETAILS = [DIAMETER, RADOME]
+
+    # supported keys in the asset_details json blob for yagi assets
+    GAIN = 'gain'
+    YAGI_DETAILS = [GAIN]
 
     # model fields
     id = Column(Integer, primary_key=True)
     asset_name = Column(String(64), nullable=False, unique=True)
     asset_type = Column(ChoiceType(ASSET_TYPES), nullable=False)
     asset_class = Column(ChoiceType(ASSET_CLASSES), nullable=False)
+    asset_details_json = Column(String)
+
+    @property
+    def asset_details(self):
+        """Dict of asset details."""
+        if self.asset_details_json:
+            return json.loads(self.asset_details_json)
+        else:
+            return {}
+
+    def update_details(self, new_details):
+        """Validate and update asset_details for an asset."""
+        if not isinstance(new_details, dict):
+            raise ValidationError('Asset details should be a dict.')
+        self._validate_asset_details_for_asset_class(new_details, self.asset_class.value)
+        self.asset_details_json = json.dumps(new_details)
+        db.session.add(self)
+        db.session.commit()
 
     @classmethod
-    def create_asset(cls, asset_name, asset_type, asset_class):
+    def create_asset(cls, asset_name, asset_type, asset_class, asset_details=None):
         """Create a new instance of an Asset.
 
         Args:
@@ -66,15 +100,23 @@ class Asset(db.Model):
         cls._validate_asset_class(asset_class)
         cls._validate_asset_class_with_asset_type(asset_class, asset_type)
 
+        if not asset_details:
+            asset_details = {}
+        else:
+            cls._validate_asset_details_for_asset_class(asset_details, asset_class)
+
         with app.app_context():
             try:
-                asset = Asset(asset_name=asset_name, asset_type=asset_type, asset_class=asset_class)
+                asset = Asset(asset_name=asset_name,
+                              asset_type=asset_type,
+                              asset_class=asset_class,
+                              asset_details_json=json.dumps(asset_details))
                 db.session.add(asset)
                 db.session.commit()
+                return asset
             except IntegrityError as err:
                 if 'UNIQUE constraint failed: asset.asset_name' in '{}'.format(err):
                     raise ResourceConflictError('There is already an asset with asset_name {}'.format(asset_name))
-        return asset
 
     # The following methods are for validating asset fields.
     # To better enforce some of the business rules, additional database constraints could be added in the future.
@@ -164,3 +206,53 @@ class Asset(db.Model):
             raise ValidationError('asset_name may only contain alphanumeric ascii characters, underscores, and dashes.')
 
         return True
+
+    @classmethod
+    def _get_asset_details_dict(cls, asset_details):
+        try:
+            details = json.loads(asset_details)
+            if not isinstance(details, dict):
+                raise ValidationError('asset_details should be a json object.')
+            return True
+        except:
+            raise ValidationError('asset_details should be a json object.')
+
+    @classmethod
+    def _check_for_unknown_asset_details_keys(cls, asset_details, asset_class):
+        """Make sure that the asset_details follow business roles for the provided asset_class.
+
+        - asset_class dish can have diameter and radome details
+        - asset_class yagi can have gain details
+        """
+        allowed_keys = []
+        if asset_class == cls.DISH:
+            allowed_keys = cls.DISH_DETAILS
+        if asset_class == cls.YAGI:
+            allowed_keys = cls.YAGI_DETAILS
+
+        keys = asset_details.keys()
+        for key in keys:
+            if key not in allowed_keys:
+                key_error_msg = 'key {} in asset_details is not supported for asset_class {}. allowed keys are: {}'
+                raise ValidationError(key_error_msg.format(key, asset_class, allowed_keys))
+
+    @classmethod
+    def _validate_float_key(cls, name, value):
+        try:
+            float(value)
+        except ValueError:
+            raise ValidationError('{} in asset_details should have a float value'.format(name))
+
+    @classmethod
+    def _validate_asset_details_for_asset_class(cls, asset_details, asset_class):
+        cls._check_for_unknown_asset_details_keys(asset_details, asset_class)
+        for key, value in asset_details.items():
+            if key == cls.DIAMETER:
+                cls._validate_float_key(key, value)
+            elif key == cls.RADOME:
+                try:
+                    bool(value)
+                except ValueError:
+                    raise ValidationError('{} in asset_details should have a boolean value'.format(cls.RADOME))
+            elif key == cls.GAIN:
+                cls._validate_float_key(key, value)

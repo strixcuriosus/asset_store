@@ -1,7 +1,7 @@
 """This Asset Store is implemented as a Flask app with a RESTful web API."""
 from flask import Flask
 
-from asset_store.api_resources import api, AssetResource, AssetListResource
+from asset_store.api_resources import api
 from asset_store.models import db
 
 # yay, it's a flask app!
@@ -28,9 +28,6 @@ db.init_app(app)
 # create the database tables when the app runs
 with app.app_context():
     db.create_all()
-
-api.add_resource(AssetListResource, '/assets')
-api.add_resource(AssetResource, '/assets/<asset_name>')
 
 if __name__ == '__main__':
     # host is set for supporting docker port binding
