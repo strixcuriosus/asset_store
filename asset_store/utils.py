@@ -67,6 +67,11 @@ def remove_nulls(input_dict):
     return output
 
 
+def has_admin_access(user):
+    """Check if a user has admin access."""
+    return user == 'admin'
+
+
 # custom partial flask-restful field
 class PartialDictField(fields.Raw):
     """A dict field that hides null values."""

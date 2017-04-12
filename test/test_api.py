@@ -100,9 +100,18 @@ class AssetsAPITestCase(AppTestCase):
     @ddt.data(*VALID_ASSET_DICTS)
     def test_create_asset__success(self, asset_dict):
         """The assets endpoint should support asset creation."""
-        response = self.app.post('/assets', data=json.dumps(asset_dict), content_type='application/json')
+        response = self.app.post('/assets', data=json.dumps(asset_dict), content_type='application/json',
+                                 headers={'X-User': 'admin'})
         self.assertEqual(response.status_code, 201)
         self.assertEqual(json.loads(response.get_data()), asset_dict)
+
+    @ddt.data({'X-User': 'badminton'}, {}, None)
+    def test_create_asset__not_authorized(self, non_admin_headers):
+        """The assets endpoint should support asset creation."""
+        asset_dict = VALID_ASSET_DICTS[0]
+        response = self.app.post('/assets', data=json.dumps(asset_dict), content_type='application/json',
+                                 headers=non_admin_headers)
+        self.assertEqual(response.status_code, 403)
 
     @ddt.data(*VALID_ASSET_DICTS)
     def test_create_asset__duplicate__no_details(self, asset_dict):
@@ -111,9 +120,9 @@ class AssetsAPITestCase(AppTestCase):
         asset_dict = asset_dict.copy()
         del asset_dict['asset_details']
         # create 1st asset
-        self.app.post('/assets', data=asset_dict)
+        self.app.post('/assets', data=asset_dict, headers={'X-User': 'admin'})
         # try creating another asset with the same asset data
-        response = self.app.post('/assets', data=asset_dict)
+        response = self.app.post('/assets', data=asset_dict, headers={'X-User': 'admin'})
         self.assertEqual(response.status_code, 409)
         message = json.loads(response.get_data()).get('message', '')
         expected_message = 'There is already an asset with asset_name {}'.format(asset_dict['asset_name'])

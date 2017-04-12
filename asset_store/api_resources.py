@@ -11,10 +11,10 @@ from asset_store.api_serializers import (asset_parser,
                                          ASSET_DETAILS_FIELDS_TO_SERIALIZE)
 
 from asset_store.models import Asset, db
-from asset_store.utils import remove_nulls, ResourceConflictError, ValidationError
+from asset_store.utils import has_admin_access, remove_nulls, ResourceConflictError, ValidationError
 
 # the api is implemented with flask-restplus, which comes with some swaggerific tools for easy auto-documentations
-api = Api(version='0.2.0', title='Asset Store API.',
+api = Api(version='0.2.1', title='Asset Store API.',
           description='A RESTful web API for satellite and antenna assets.')
 
 
@@ -96,11 +96,18 @@ class AssetListResource(Resource):
         assets = db.session.query(Asset).all()
         return assets, 200
 
+    @api.header('X-User', 'just a username for now', required=True)
     @api.response(201, 'Asset Created')
     @api.response(400, 'ValidationError')
+    @api.response(403, 'Not Authorized')
     @api.expect(ASSET_RESOURCE_FIELDS)
     def post(self):
         """Create a new asset."""
+        # check if user is authorized
+        # TODO: consider making a reusable auth decorator
+        user = request.headers.get('X-User')
+        if not has_admin_access(user):
+            abort(403, 'Not authorized to create assets.')
         asset_dict = dict(asset_parser.parse_args())
         # fill in default (empty dict) details if not provided
         asset_dict['asset_details'] = asset_dict['asset_details'] or {}
