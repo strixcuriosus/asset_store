@@ -16,6 +16,11 @@ asset_details_parser.add_argument('gain')
 asset_details_parser.add_argument('diameter')
 asset_details_parser.add_argument('radome')
 
+# a parser for asset list filter args
+asset_filters_parser = reqparse.RequestParser()
+asset_filters_parser.add_argument('asset_type', location='args')
+asset_filters_parser.add_argument('asset_class', location='args')
+
 
 # asset fields to expose in the api
 ASSET_FIELDS_TO_SERIALIZE = {'asset_name': fields.String(default='HelloWorld'),

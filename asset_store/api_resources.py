@@ -7,6 +7,7 @@ from sqlalchemy.orm.exc import NoResultFound
 
 from asset_store.api_serializers import (asset_parser,
                                          asset_details_parser,
+                                         asset_filters_parser,
                                          ASSET_FIELDS_TO_SERIALIZE,
                                          ASSET_DETAILS_FIELDS_TO_SERIALIZE)
 
@@ -14,7 +15,7 @@ from asset_store.models import Asset, db
 from asset_store.utils import has_admin_access, remove_nulls, ResourceConflictError, ValidationError
 
 # the api is implemented with flask-restplus, which comes with some swaggerific tools for easy auto-documentations
-api = Api(version='0.2.1', title='Asset Store API.',
+api = Api(version='0.2.2', title='Asset Store API.',
           description='A RESTful web API for satellite and antenna assets.')
 
 
@@ -93,7 +94,8 @@ class AssetListResource(Resource):
     @api.marshal_with(ASSET_RESOURCE_FIELDS, as_list=True)
     def get(self):
         """Get a list of assets."""
-        assets = db.session.query(Asset).all()
+        filters = remove_nulls(asset_filters_parser.parse_args())
+        assets = db.session.query(Asset).filter_by(**filters).all()
         return assets, 200
 
     @api.header('X-User', 'just a username for now', required=True)

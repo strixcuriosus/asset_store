@@ -36,6 +36,46 @@ class AssetsAPITestCase(AppTestCase):
         results = json.loads(response.get_data())
         self.assertEqual(results, VALID_ASSET_DICTS[:2])
 
+    def test_get_assets_list__filtered(self):
+        """Test asset_type and asset_class filtering."""
+        # create many valid assets
+        for asset_dict in VALID_ASSET_DICTS:
+            Asset.create_asset(**asset_dict)
+
+        # no supported filters
+        response = self.app.get('/assets?foo=bar')
+        results = json.loads(response.get_data())
+        self.assertEqual(len(results), len(VALID_ASSET_DICTS))
+
+        # filter by type
+        response = self.app.get('/assets?asset_type=satellite')
+        results = json.loads(response.get_data())
+        self.assertGreater(len(results), 0)
+        self.assertTrue(all([res['asset_type'] == Asset.SATELLITE for res in results]))
+
+        # filter by class
+        response = self.app.get('/assets?asset_class=yagi')
+        results = json.loads(response.get_data())
+        self.assertGreater(len(results), 0)
+        self.assertTrue(all([res['asset_class'] == Asset.YAGI for res in results]))
+
+        # filter by type and class
+        response = self.app.get('/assets?asset_type=antenna&asset_class=yagi')
+        results = json.loads(response.get_data())
+        self.assertGreater(len(results), 0)
+        self.assertTrue(all([res['asset_class'] == Asset.YAGI and
+                             res['asset_type'] == Asset.ANTENNA for res in results]))
+
+        # filter by invalid type
+        response = self.app.get('/assets?asset_type=atypical')
+        results = json.loads(response.get_data())
+        self.assertEqual(len(results), 0)
+
+        # filter by invalid (type, class) pair
+        response = self.app.get('/assets?asset_type=satellite&asset_class=yagi')
+        results = json.loads(response.get_data())
+        self.assertEqual(len(results), 0)
+
     @ddt.data(*VALID_ASSET_DICTS)
     def test_get_single_asset_by_name__valid(self, asset_dict):
         """The single asset endpoint should return a single asset if it exists."""
